@@ -40,7 +40,42 @@ jobs:
         run: python -m pip install --upgrade pip wheel
       - run: python -m pip install -r tests/requirements/py3.txt -r tests/requirements/oracle.txt -e .
       - name: Create Oracle Test Pilot settings file
-        run: mv ./.github/workflows/data/test_oracle_test_pilot.py.tpl ./tests/test_oracle_test_pilot.py
+        run: |
+          cat > ./tests/test_oracle_test_pilot.py <<'EOF'
+          import os
+          from test_sqlite import *  # NOQA
+
+          CONNECTION_STRING = os.environ.get("TESTPILOT_CONNECTION_STRING_SUFFIX", "")
+          RUNID = os.environ.get("RUNID", "")
+          PASSWORD = os.environ.get("TESTPILOT_PASSWORD", "")
+
+          DATABASES = {
+              "default": {
+                  "ENGINE": "django.db.backends.oracle",
+                  "NAME": CONNECTION_STRING,
+                  "USER": "django_tests_default_" + RUNID,
+                  "PASSWORD": PASSWORD,
+                  "TEST": {
+                      "CREATE_DB": False,
+                      "CREATE_USER": False,
+                      "USER": "django_tests_default_" + RUNID,
+                      "PASSWORD": PASSWORD,
+                  },
+              },
+              "other": {
+                  "ENGINE": "django.db.backends.oracle",
+                  "NAME": CONNECTION_STRING,
+                  "USER": "django_tests_other_" + RUNID,
+                  "PASSWORD": PASSWORD,
+                  "TEST": {
+                      "CREATE_DB": False,
+                      "CREATE_USER": False,
+                      "USER": "django_tests_other_" + RUNID,
+                      "PASSWORD": PASSWORD,
+                  },
+              },
+          }
+          EOF
       - id: create_database
         uses: oracle-actions/setup-testpilot@0e9d9b877bb35f65e3f1f1c54c6a425329dd7ece # v1.0.27
         with:
