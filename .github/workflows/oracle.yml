@@ -19,7 +19,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          #- rdbms: base-database-service-26ai
+          - rdbms: base-database-service-19c
+          - rdbms: base-database-service-21c
+          - rdbms: base-database-service-26ai
+          - rdbms: base-database-service-26ai-rac
           - rdbms: autonomous-transaction-processing-serverless-19c
           - rdbms: autonomous-transaction-processing-serverless-26ai
     runs-on: [ self-hosted, Linux, X64, OracleTestPilot ]
