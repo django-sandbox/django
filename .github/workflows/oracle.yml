@@ -80,7 +80,7 @@ jobs:
           }
           EOF
       - id: create_database
-        uses: oracle-actions/setup-testpilot@0e9d9b877bb35f65e3f1f1c54c6a425329dd7ece # v1.0.27
+        uses: oracle-actions/setup-testpilot@ad55a0d7294112c44a9cc9a38f4b3d293da8fcf0 # v1.0.31
         with:
           oci-service: ${{ matrix.rdbms }}
           action: create
@@ -99,9 +99,123 @@ jobs:
         working-directory: ./tests/
         run: python -Wall runtests.py --settings=test_oracle_test_pilot --keepdb --noinput --verbosity=2 --timing --parallel 1
 
-      - uses: oracle-actions/setup-testpilot@0e9d9b877bb35f65e3f1f1c54c6a425329dd7ece # v1.0.27
+      - uses: oracle-actions/setup-testpilot@ad55a0d7294112c44a9cc9a38f4b3d293da8fcf0 # v1.0.31
         if: always()
         with:
           oci-service: ${{ matrix.rdbms }}
           action: delete
           user: django_tests_default,django_tests_other
+
+  oracle_test_pilot_gis:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          #- rdbms: base-database-service-26ai
+          - rdbms: autonomous-transaction-processing-serverless-19c
+          - rdbms: autonomous-transaction-processing-serverless-26ai
+    runs-on: [ self-hosted, Linux, X64, OracleTestPilot ]
+    name: Oracle ${{matrix.rdbms}}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: 'main'
+          persist-credentials: false
+
+      - name: Create Conda environment file
+        run: |
+          cat > ./tests/geolibs-gil.yml <<'EOF'
+          name: geodjango
+          channels:
+            - conda-forge
+          dependencies:
+            - python-gil=3.14
+            - libgdal=3.11.*
+            - geos=3.14.*
+            - proj=9.6.*
+            - pip=26.*
+            - pip:
+                - -r ../../../../tests/requirements/py3.txt
+                - -r ../../../../tests/requirements/oracle.txt
+                - -e ../../../../
+          EOF
+
+      - name: Setup Miniforge
+        # Pinned to v4.0.1
+        uses: conda-incubator/setup-miniconda@8ee1f361103df19b6f8c8655fd3967a8ecb162d5
+        with:
+          activate-environment: geodjango
+          environment-file: "./tests/geolibs-gil.yml"
+          channel-priority: strict
+
+      - name: Show GIL status
+        run: python -c "import sys; print('GIL enabled:', sys._is_gil_enabled())"
+      - name: Print geospatial versions
+        run: |
+          python -c "from django.contrib.gis import gdal, geos; print(f'GDAL: {gdal.gdal_version()}'); print(f'GEOS: {geos.geos_version()}')"
+
+      - name: Create Oracle Test Pilot GIS settings file
+        run: |
+          cat > ./tests/test_oracle_test_pilot_gis.py <<'EOF'
+          import os
+          from test_sqlite import *  # NOQA
+
+          CONNECTION_STRING = os.environ.get("TESTPILOT_CONNECTION_STRING_SUFFIX", "")
+          RUNID = os.environ.get("RUNID", "")
+          PASSWORD = os.environ.get("TESTPILOT_PASSWORD", "")
+
+          DATABASES = {
+              "default": {
+                  "ENGINE": "django.contrib.gis.db.backends.oracle",
+                  "NAME": CONNECTION_STRING,
+                  "USER": "django_tests_default_" + RUNID,
+                  "PASSWORD": PASSWORD,
+                  "TEST": {
+                      "CREATE_DB": False,
+                      "CREATE_USER": False,
+                      "USER": "django_tests_default_" + RUNID,
+                      "PASSWORD": PASSWORD,
+                  },
+              },
+              "other": {
+                  "ENGINE": "django.contrib.gis.db.backends.oracle",
+                  "NAME": CONNECTION_STRING,
+                  "USER": "django_tests_other_" + RUNID,
+                  "PASSWORD": PASSWORD,
+                  "TEST": {
+                      "CREATE_DB": False,
+                      "CREATE_USER": False,
+                      "USER": "django_tests_other_" + RUNID,
+                      "PASSWORD": PASSWORD,
+                  },
+              },
+          }
+          EOF
+      - id: create_database
+        uses: oracle-actions/setup-testpilot@ad55a0d7294112c44a9cc9a38f4b3d293da8fcf0 # v1.0.31
+        with:
+          oci-service: ${{ matrix.rdbms }}
+          action: create
+          user: django_gis_tests_default,django_gis_tests_other
+          connection-string-format: easy-connect
+
+      - name: Run GIS tests
+        env:
+          TESTPILOT_USERNAME: django_tests_default_${{ github.run_number }}
+          TESTPILOT_PASSWORD: ${{ steps.create_database.outputs.database_password }}
+          TESTPILOT_CONNECTION_STRING_SUFFIX: ${{ steps.create_database.outputs.connection_string_suffix }}
+          RUNID: ${{ github.run_number }}
+          API_HOST: ""
+          TESTPILOT_CLIENT_ID: ""
+          TESTPILOT_TOKEN: ""
+        working-directory: ./tests/
+        run: python -Wall runtests.py gis_tests --settings=test_oracle_test_pilot_gis --keepdb --noinput --verbosity=2 --timing --parallel 1
+
+      - uses: oracle-actions/setup-testpilot@ad55a0d7294112c44a9cc9a38f4b3d293da8fcf0 # v1.0.31
+        if: always()
+        with:
+          oci-service: ${{ matrix.rdbms }}
+          action: delete
+          user: django_gis_tests_default,django_gis_tests_other
