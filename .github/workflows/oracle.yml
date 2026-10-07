@@ -109,6 +109,7 @@ jobs:
           action: delete
           user: django_tests_default,django_tests_other
 
+
   oracle_test_pilot_gis:
     strategy:
       fail-fast: false
@@ -121,10 +122,7 @@ jobs:
           - rdbms: autonomous-transaction-processing-serverless-19c
           - rdbms: autonomous-transaction-processing-serverless-26ai
     runs-on: [ self-hosted, Linux, X64, OracleTestPilot ]
-    defaults:
-      run:
-        shell: bash -el {0}
-    name: Oracle ${{matrix.rdbms}}
+    name: Oracle GIS ${{matrix.rdbms}}
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -133,40 +131,23 @@ jobs:
           ref: 'main'
           persist-credentials: false
 
-      - name: Create Conda environment file
-        run: |
-          cat > ./tests/geolibs-gil.yml <<'EOF'
-          name: geodjango
-          channels:
-            - conda-forge
-          dependencies:
-            - python-gil=3.14
-            - libgdal=3.11.*
-            - geos=3.14.*
-            - proj=9.6.*
-            - pip=26.*
-            - pip:
-                - -r ./requirements/py3.txt
-                - -r ./requirements/oracle.txt
-                - -e ../
-          EOF
-
-      - name: Setup Miniforge
-        # Pinned to v4.0.1
-        uses: conda-incubator/setup-miniconda@8ee1f361103df19b6f8c8655fd3967a8ecb162d5
+      - name: Set up Python
+        uses: actions/setup-python@v6
         with:
-          activate-environment: geodjango
-          environment-file: "./tests/geolibs-gil.yml"
-          channel-priority: strict
-        env:
-          CONDA_SSL_VERIFY: false
-          REQUESTS_CA_BUNDLE: ""
+          python-version: '3.14'
+          cache: 'pip'
+          cache-dependency-path: |
+            'tests/requirements/py3.txt'
+            'tests/requirements/oracle.txt'
+      - name: Install and upgrade packaging tools
+        run: python -m pip install --upgrade pip wheel
+      - run: python -m pip install -r tests/requirements/py3.txt -r tests/requirements/oracle.txt -e .
 
       - name: Show GIL status
         run: python -c "import sys; print('GIL enabled:', sys._is_gil_enabled())"
-      - name: Print geospatial versions
-        run: |
-          python -c "from django.contrib.gis import gdal, geos; print(f'GDAL: {gdal.gdal_version()}'); print(f'GEOS: {geos.geos_version()}')"
+      #      - name: Print geospatial versions
+      #        run: |
+      #          python -c "from django.contrib.gis import gdal, geos; print(f'GDAL: {gdal.gdal_version()}'); print(f'GEOS: {geos.geos_version()}')"
 
       - name: Create Oracle Test Pilot GIS settings file
         run: |
